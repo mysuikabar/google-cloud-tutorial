@@ -4,4 +4,10 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "google-cloud-aiplatform>=1.90.0",
+    "joblib>=1.4.2",
+    "kfp>=2.13.0",
+    "pandas>=2.2.3",
+    "scikit-learn>=1.6.1",
+]
