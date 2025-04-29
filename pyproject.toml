@@ -9,5 +9,6 @@ dependencies = [
     "joblib>=1.4.2",
     "kfp>=2.13.0",
     "pandas>=2.2.3",
+    "python-dotenv>=1.1.0",
     "scikit-learn>=1.6.1",
 ]
