@@ -1,5 +1,5 @@
 from kfp import compiler
-from kfp.dsl import Dataset, Input, Output, component, pipeline
+from kfp.dsl import Dataset, Input, Metrics, Output, component, pipeline
 
 
 @component(packages_to_install=["pandas", "scikit-learn"])
@@ -58,9 +58,34 @@ def train_model(
     joblib.dump(rf_model, model.path)
 
 
+@component(packages_to_install=["pandas", "scikit-learn", "joblib"])
+def evaluate_model(
+    X_test: Input[Dataset],
+    y_test: Input[Dataset],
+    model: Input[Dataset],
+    metrics: Output[Metrics],
+) -> None:
+    import joblib
+    import pandas as pd
+    from sklearn.metrics import accuracy_score, precision_score, recall_score
+
+    # データの読み込み
+    X_test_df = pd.read_csv(X_test.path)
+    y_test_df = pd.read_csv(y_test.path)
+    model = joblib.load(model.path)
+
+    # 予測の実行
+    y_pred = model.predict(X_test_df)
+
+    # メトリクスの計算
+    metrics.log_metric("accuracy", accuracy_score(y_test_df, y_pred))
+    metrics.log_metric("precision", precision_score(y_test_df, y_pred))
+    metrics.log_metric("recall", recall_score(y_test_df, y_pred))
+
+
 @pipeline(
     name="ml-pipeline",
-    description="A simple ML pipeline with data preprocessing and model training",
+    description="A simple ML pipeline with data preprocessing, model training and evaluation",
 )
 def ml_pipeline() -> None:
     # データの読み込み
@@ -70,9 +95,16 @@ def ml_pipeline() -> None:
     preprocess_task = preprocess_data(input_data=load_data_task.outputs["output_data"])
 
     # モデルのトレーニング
-    train_model(
+    train_task = train_model(
         X_train=preprocess_task.outputs["X_train"],
         y_train=preprocess_task.outputs["y_train"],
+    )
+
+    # モデルの評価
+    evaluate_model(
+        X_test=preprocess_task.outputs["X_test"],
+        y_test=preprocess_task.outputs["y_test"],
+        model=train_task.outputs["model"],
     )
 
 
