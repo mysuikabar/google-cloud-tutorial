@@ -1,13 +1,13 @@
-import joblib
+from typing import NamedTuple
+
 import kfp
-import pandas as pd
 from kfp import dsl
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
 
 
-@dsl.component
+@dsl.component(packages_to_install=["pandas", "scikit-learn"])
 def load_data() -> str:
+    import pandas as pd
+
     # サンプルデータの作成
     data = {
         "feature1": [1, 2, 3, 4, 5],
@@ -19,8 +19,19 @@ def load_data() -> str:
     return "data.csv"
 
 
-@dsl.component
-def preprocess_data(data_path: str) -> str:
+@dsl.component(packages_to_install=["pandas", "scikit-learn"])
+def preprocess_data(data_path: str) -> NamedTuple(
+    "PreprocessOutputs",
+    [
+        ("X_train_path", str),
+        ("y_train_path", str),
+        ("X_test_path", str),
+        ("y_test_path", str),
+    ],
+):
+    import pandas as pd
+    from sklearn.model_selection import train_test_split
+
     df = pd.read_csv(data_path)
     # 簡単な前処理
     X = df[["feature1", "feature2"]]
@@ -33,11 +44,15 @@ def preprocess_data(data_path: str) -> str:
     y_train.to_csv("y_train.csv", index=False)
     y_test.to_csv("y_test.csv", index=False)
 
-    return "X_train.csv"
+    return "X_train.csv", "y_train.csv", "X_test.csv", "y_test.csv"
 
 
-@dsl.component
+@dsl.component(packages_to_install=["pandas", "scikit-learn", "joblib"])
 def train_model(X_train_path: str, y_train_path: str) -> str:
+    import joblib
+    import pandas as pd
+    from sklearn.ensemble import RandomForestClassifier
+
     X_train = pd.read_csv(X_train_path)
     y_train = pd.read_csv(y_train_path)
 
@@ -59,10 +74,13 @@ def ml_pipeline() -> None:
     load_data_task = load_data()
 
     # データの前処理
-    preprocess_data(data_path=load_data_task.output)
+    preprocess_task = preprocess_data(data_path=load_data_task.output)
 
     # モデルのトレーニング
-    train_model(X_train_path="X_train.csv", y_train_path="y_train.csv")
+    train_model(
+        X_train_path=preprocess_task.outputs["X_train_path"],
+        y_train_path=preprocess_task.outputs["y_train_path"],
+    )
 
 
 if __name__ == "__main__":
