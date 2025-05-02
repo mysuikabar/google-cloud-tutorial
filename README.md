@@ -7,10 +7,10 @@ gcloud auth application-default login
 
 Compile the pipeline
 ```bash
-run pipeline.py
+python pipeline.py
 ```
 
 Run the pipeline
 ```bash
-run run.py
+python run.py
 ```
