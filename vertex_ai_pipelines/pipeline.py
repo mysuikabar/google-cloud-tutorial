@@ -1,11 +1,9 @@
-from typing import NamedTuple
-
-import kfp
-from kfp import dsl
+from kfp import compiler
+from kfp.dsl import Dataset, Input, Output, component, pipeline
 
 
-@dsl.component(packages_to_install=["pandas", "scikit-learn"])
-def load_data() -> str:
+@component(packages_to_install=["pandas", "scikit-learn"])
+def load_data(output_data: Output[Dataset]) -> None:
     import pandas as pd
 
     # サンプルデータの作成
@@ -15,57 +13,52 @@ def load_data() -> str:
         "target": [0, 1, 0, 1, 0],
     }
     df = pd.DataFrame(data)
-    df.to_csv("data.csv", index=False)
-    return "data.csv"
+    df.to_csv(output_data.path, index=False)
 
 
-@dsl.component(packages_to_install=["pandas", "scikit-learn"])
-def preprocess_data(data_path: str) -> NamedTuple(
-    "PreprocessOutputs",
-    [
-        ("X_train_path", str),
-        ("y_train_path", str),
-        ("X_test_path", str),
-        ("y_test_path", str),
-    ],
-):
+@component(packages_to_install=["pandas", "scikit-learn"])
+def preprocess_data(
+    input_data: Input[Dataset],
+    X_train: Output[Dataset],
+    y_train: Output[Dataset],
+    X_test: Output[Dataset],
+    y_test: Output[Dataset],
+) -> None:
     import pandas as pd
     from sklearn.model_selection import train_test_split
 
-    df = pd.read_csv(data_path)
+    df = pd.read_csv(input_data.path)
     # 簡単な前処理
     X = df[["feature1", "feature2"]]
     y = df["target"]
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+    X_train_df, X_test_df, y_train_df, y_test_df = train_test_split(X, y, test_size=0.2)
 
     # データの保存
-    X_train.to_csv("X_train.csv", index=False)
-    X_test.to_csv("X_test.csv", index=False)
-    y_train.to_csv("y_train.csv", index=False)
-    y_test.to_csv("y_test.csv", index=False)
-
-    return "X_train.csv", "y_train.csv", "X_test.csv", "y_test.csv"
+    X_train_df.to_csv(X_train.path, index=False)
+    X_test_df.to_csv(X_test.path, index=False)
+    y_train_df.to_csv(y_train.path, index=False)
+    y_test_df.to_csv(y_test.path, index=False)
 
 
-@dsl.component(packages_to_install=["pandas", "scikit-learn", "joblib"])
-def train_model(X_train_path: str, y_train_path: str) -> str:
+@component(packages_to_install=["pandas", "scikit-learn", "joblib"])
+def train_model(
+    X_train: Input[Dataset], y_train: Input[Dataset], model: Output[Dataset]
+) -> None:
     import joblib
     import pandas as pd
     from sklearn.ensemble import RandomForestClassifier
 
-    X_train = pd.read_csv(X_train_path)
-    y_train = pd.read_csv(y_train_path)
+    X_train_df = pd.read_csv(X_train.path)
+    y_train_df = pd.read_csv(y_train.path)
 
-    model = RandomForestClassifier()
-    model.fit(X_train, y_train.values.ravel())
+    rf_model = RandomForestClassifier()
+    rf_model.fit(X_train_df, y_train_df.values.ravel())
 
     # モデルの保存
-    model_path = "model.joblib"
-    joblib.dump(model, model_path)
-    return model_path
+    joblib.dump(rf_model, model.path)
 
 
-@dsl.pipeline(
+@pipeline(
     name="ml-pipeline",
     description="A simple ML pipeline with data preprocessing and model training",
 )
@@ -74,17 +67,17 @@ def ml_pipeline() -> None:
     load_data_task = load_data()
 
     # データの前処理
-    preprocess_task = preprocess_data(data_path=load_data_task.output)
+    preprocess_task = preprocess_data(input_data=load_data_task.outputs["output_data"])
 
     # モデルのトレーニング
     train_model(
-        X_train_path=preprocess_task.outputs["X_train_path"],
-        y_train_path=preprocess_task.outputs["y_train_path"],
+        X_train=preprocess_task.outputs["X_train"],
+        y_train=preprocess_task.outputs["y_train"],
     )
 
 
 if __name__ == "__main__":
     # パイプラインをコンパイル
-    kfp.compiler.Compiler().compile(
+    compiler.Compiler().compile(
         pipeline_func=ml_pipeline, package_path="ml_pipeline.yaml"
     )
